@@ -4,13 +4,12 @@ from pathlib import Path
 
 # BUSCAR EL ARCHIVO .STL EN EL DIRECTORIO ACTUAL
 dir_act = Path.cwd()
-archivos_stl = list(dir_act.glob("*.stl"))
+arch_stl = next(dir_act.glob("*.stl"), None)
 
-if not archivos_stl:
+if not arch_stl:
     print(f"Error: No se encontró ningún archivo .stl en '{dir_act}'")
     sys.exit(1)
 
-arch_stl = archivos_stl[0]
 
 # INICIALIZAR SALOME Y EL MÓDULO MESH
 try:
@@ -49,7 +48,7 @@ if not m_princ.Compute():
     sys.exit(1)
 
 # EXPORTAR MALLA COMO STL
-rm_out = arch_stl.stem.replace("closed*", "closed_r") + ".stl"
+rm_out = arch_stl.stem.replace("closed", "closed_r") + ".stl"
 
 print(f"Exportando malla remallada a: {rm_out}")
 m_princ.ExportSTL(str(rm_out))

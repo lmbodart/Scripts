@@ -61,6 +61,11 @@ BioSurfaceHoleFilling "$ARCH_VTK2"
 echo "Convirtiendo $ARCH_VTK2 a .stl..."
 python3 "$DIR_SCRIPT/vtk_stl.py" --dir "$DIRECTORIO_DESTINO"
 
-# Remallado 2D y 3D en SALOME MESH
-echo "Realizando remallado 2D en SALOME"
+# Remallado 2D en SALOME MESH
+echo "Realizando remallado 2D en SALOME..."
 "$CMD_SALOME" -t -b "$DIR_SCRIPT/salome1m.py"
+
+# Remallado 3D en SALOME GEOMETRY y MESH
+echo "Realizando remallado 3D en SALOME..."
+"$CMD_SALOME" -t -b "$DIR_SCRIPT/salome2m.py"
+
