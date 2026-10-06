@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+set -e
+
+DIR_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+DIRECTORIO_DESTINO="$PWD"
+
+if command -v salome &>/dev/null; then
+    CMD_SALOME="salome"
+else
+    POSIBLE_SALOME=$(find /opt /usr/bin /home/$USER -maxdepth 4 -name "salome" -type f 2>/dev/null | head -n 1)
+
+    if [ -n "$POSIBLE_SALOME" ]; then
+        CMD_SALOME="$POSIBLE_SALOME"
+    fi
+fi
+
+# Buscar el nombre del tutorial de OpenFOAM
+NOMBRE_CASO="motorBike"
+
+if [ -z "$FOAM_TUTORIALS" ]; then
+    echo "Error: La variable \$FOAM_TUTORIALS no está cargada."
+    echo "Ejecuta 'source /opt/openfoam/etc/bashrc' antes de correr este script."
+    exit 1
+fi
+
+# Buscar el directorio del tutorial que contenga las carpetas de OpenFOAM
+ORIGEN_ENCONTRADO=""
+while IFS= read -r dir; do
+    if [ -d "$dir/system" ] && [ -d "$dir/constant" ]; then
+        ORIGEN_ENCONTRADO="$dir"
+        break
+    fi
+done < <(find "$FOAM_TUTORIALS" -type d -name "$NOMBRE_CASO")
+
+if [ -z "$ORIGEN_ENCONTRADO" ]; then
+    echo "Error: No se encontró '$NOMBRE_CASO' en \$FOAM_TUTORIALS."
+    exit 1
+fi
+
+# Copia de tutorial de OpenFOAM
+python3 "$DIR_SCRIPT/newdfoam.py" --origen "$ORIGEN_ENCONTRADO" --destino "$DIRECTORIO_DESTINO"
+
+# Implementación de herramientas de BioSurface para remallado y cierre de la malla base
+ARCH_VTK1=$(find "$DIRECTORIO_DESTINO" -maxdepth 1 -type f -name "*output*.vtk" | head -n 1)
+ARCH_VTK2="${ARCH_VTK1//output/closed}"
+PARAM_BSIR=0.2
+
+BioSurfaceIsotropicRemeshing "$ARCH_VTK1" "$ARCH_VTK2" -length "$PARAM_BSIR"
+BioSurfaceHoleFilling "$ARCH_VTK2"
+
+# Conversión optimizada de VTK a STL sin ParaView (Librería VTK nativa)
+python3 -c "
+import vtk
+reader = vtk.vtkUnstructuredGridReader()
+reader.SetFileName('$ARCH_VTK2')
+reader.Update()
+filter_geom = vtk.vtkGeometryFilter()
+filter_geom.SetInputData(reader.GetOutput())
+filter_geom.Update()
+writer = vtk.vtkSTLWriter()
+writer.SetFileName('${ARCH_VTK2%.vtk}.stl')
+writer.SetInputData(filter_geom.GetOutput())
+writer.Write()
+"
+
+# Procesamiento unificado en SALOME (Remallado, Clasificación y Exportación UNV)
+salome -t -b "$DIR_SCRIPT/optimiz.py"
+
+# Conversión a parches de OpenFOAM
+DIR_FOAM="${DIRECTORIO_DESTINO}/foam"
+ARCH_UNV=$(find "$DIR_FOAM" -maxdepth 1 -type f -name "*.unv" | head -n 1)
+
+cd "$DIR_FOAM"
+ideasUnvToFoam "$(basename "$ARCH_UNV")"
+touch "case.foam"
+
+echo "=== Procesamiento de malla finalizado exitosamente ==="

@@ -75,7 +75,7 @@ smesh.SetName(mesh_2.GetMesh(), f"Malla_{arch_stl.stem}")
 arch_out = arch_stl.stem.replace("closed_r", "mesh") + ".unv"
 p_unv = (dir_foam / arch_out).resolve()
 
-print(f"Exportando malla remallada a: {p_unv}")
+print(f"Exportando malla a: {p_unv}")
 
 try:
     mesh_2.ExportUNV(str(p_unv))

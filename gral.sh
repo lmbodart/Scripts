@@ -69,3 +69,25 @@ echo "Realizando remallado 2D en SALOME..."
 echo "Realizando remallado 3D en SALOME..."
 "$CMD_SALOME" -t -b "$DIR_SCRIPT/salome2m.py"
 
+# UNV a FOAM
+DIR_FOAM="${DIRECTORIO_DESTINO}/foam"
+ARCH_UNV=$(find "$DIR_FOAM" -maxdepth 1 -type f -name "*.unv" | head -n 1)
+
+if [ -n "$ARCH_UNV" ]; then
+    cd "$DIR_FOAM" || exit 1
+
+    NOMBRE_UNV=$(basename "$ARCH_UNV")
+    echo "Ejecutando ideasUnvToFoam a $NOMBRE_UNV..."
+    ideasUnvToFoam "$NOMBRE_UNV"
+
+    NOMBRE_FOAM="$(basename "${ARCH_UNV%.unv}" | sed 's/_mesh//').foam"
+    echo "Generando archivo $NOMBRE_FOAM..."
+    touch "$NOMBRE_FOAM"
+
+    rm -f Allclean Allrun Allrun.pre
+else
+    echo "Error: No se encontró ningún archivo .unv en '$DIR_FOAM'."
+    exit 1
+fi
+
+
