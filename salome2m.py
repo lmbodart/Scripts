@@ -77,10 +77,14 @@ p_unv = (dir_foam / arch_out).resolve()
 
 print(f"Exportando malla remallada a: {p_unv}")
 
-res_export = mesh_2.GetMesh().ExportUNV(str(p_unv))
+try:
+    mesh_2.ExportUNV(str(p_unv))
+except Exception as e:
+    print(f"Error al exportar la malla a UNV: {e}")
+    sys.exit(1)
 
-if res_export:
+if p_unv.exists() and p_unv.stat().st_size > 0:
     print("Malla exportada correctamente a UNV.")
 else:
-    print("Error al exportar la malla a UNV por el driver de SALOME.")
+    print("Error: el archivo UNV no se generó o está vacío.")
     sys.exit(1)
