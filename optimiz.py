@@ -8,6 +8,44 @@ dir_act = Path.cwd()
 arch_stl = next(dir_act.glob("*.stl"), None)
 dir_foam = dir_act / "foam"
 
+import itertools
+import numpy as np
+import vtk
+
+def leer_centerline(ruta):
+    """Devuelve (inlet_xyz, [outlet_xyz, ...]) desde un .vtk de centerlines."""
+    r = vtk.vtkPolyDataReader()
+    r.SetFileName(str(ruta))
+    r.Update()
+    pd = r.GetOutput()
+
+    lineas = pd.GetLines()
+    lineas.InitTraversal()
+    ids = vtk.vtkIdList()
+    inicios, finales = [], []
+    while lineas.GetNextCell(ids):
+        inicios.append(pd.GetPoint(ids.GetId(0)))
+        finales.append(pd.GetPoint(ids.GetId(ids.GetNumberOfIds() - 1)))
+
+    inlet = np.mean(inicios, axis=0)          # punto de partida común
+    outlets = []
+    for p in map(np.array, finales):          # extremo final de cada línea
+        if not any(np.linalg.norm(p - q) < 1e-6 for q in outlets):
+            outlets.append(p)
+    return inlet, outlets
+
+# VERIFICACIÓN INICIAL DE LA CENTERLINE
+arch_cl = next(iter(sorted(dir_act.glob("*centerlines*.vtk"))), None)
+if not arch_cl:
+    print(f"Error: No se encontró archivo *centerlines*.vtk en '{dir_act}'")
+    sys.exit(1)
+try:
+    cl_inlet, cl_outlets = leer_centerline(arch_cl)
+except Exception as e:
+    print(f"Error: no se pudo leer la centerline '{arch_cl.name}': {e}")
+    sys.exit(1)
+print(f"Centerline: {arch_cl.name} -> 1 inlet, {len(cl_outlets)} outlet(s)")
+
 if not arch_stl:
     print(f"Error: No se encontró archivo .stl en '{dir_act}'")
     sys.exit(1)
@@ -169,13 +207,45 @@ if wall is not None:
     print(f"   [+] Parche 'wall' asignado ({len(wall_groups)} grupos unidos)")
 
 # Ordenamiento de tapas a lo largo del eje Z
-cap_groups.sort(key=lambda x: x['z_center'])
+# ASIGNACIÓN DE NOMBRES POR PROXIMIDAD A LA CENTERLINE
 
-for idx, cap_info in enumerate(cap_groups):
-    name = "inlet" if idx == 0 else f"outlet_{idx}"
-    cap_info['group'].SetName(name)
-    print(f"   [+] Parche '{name}' asignado (Planaridad P: {cap_info['planarity']:.4f}, "
-          f"Área: {cap_info['area']:.2f}, Z: {cap_info['z_center']:.2f})")
+# Centroide xyz de cada tapa (promedio de baricentros de sus caras)
+for c in cap_groups:
+    bc = np.array([mesh_2.BaryCenter(i) for i in c['group'].GetIDs()])
+    c['centroid'] = bc.mean(axis=0)
+
+targets = [("inlet", cl_inlet)] + [(f"outlet_{i}", p) for i, p in enumerate(cl_outlets, start=1)]
+
+if len(cap_groups) != len(targets):
+    print(f"   [!] Tapas detectadas ({len(cap_groups)}) != puntos en la centerline ({len(targets)}). "
+          f"Revisa el umbral de planaridad o la centerline.")
+
+# Asignación óptima (mínima distancia total) probando todas las combinaciones; n es pequeño
+k = min(len(cap_groups), len(targets))
+mejor, mejor_coste = None, float("inf")
+for tsel in itertools.combinations(range(len(targets)), k):
+    for csel in itertools.permutations(range(len(cap_groups)), k):
+        coste = sum(np.linalg.norm(cap_groups[c]['centroid'] - targets[t][1])
+                    for c, t in zip(csel, tsel))
+        if coste < mejor_coste:
+            mejor, mejor_coste = list(zip(csel, tsel)), coste
+
+asignadas = set()
+for c_idx, t_idx in mejor:
+    cap = cap_groups[c_idx]
+    name, punto = targets[t_idx]
+    dist = float(np.linalg.norm(cap['centroid'] - punto))
+    r_eq = math.sqrt(cap['area'] / math.pi)          # radio equivalente de la tapa
+    cap['group'].SetName(name)
+    asignadas.add(c_idx)
+    aviso = "  [!] distancia grande: ¿unidades o sistema de coordenadas distintos?" if dist > r_eq else ""
+    print(f"   [+] Parche '{name}' asignado (dist. a centerline: {dist:.3f}, "
+          f"Área: {cap['area']:.2f}, P: {cap['planarity']:.4f}){aviso}")
+
+# Tapas sin pareja: se nombran de forma visible en vez de dejarlas anónimas
+for i, cap in enumerate(c for j, c in enumerate(cap_groups) if j not in asignadas):
+    cap['group'].SetName(f"sin_asignar_{i+1}")
+    print(f"   [!] Tapa sin pareja en la centerline -> 'sin_asignar_{i+1}'")
 
 # EXPORTAR EN FORMATO .UNV
 arch_out = arch_stl2.stem.replace("closed_r", "mesh") + ".unv"

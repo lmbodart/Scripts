@@ -4,6 +4,13 @@ set -e
 DIR_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 DIRECTORIO_DESTINO="$PWD"
 
+ARCH_CL=$(find "$DIRECTORIO_DESTINO" -maxdepth 1 -type f -name "*centerlines*.vtk" | head -n 1)
+if [ -z "$ARCH_CL" ]; then
+    echo "Error: no se encontró un archivo *centerlines*.vtk en '$DIRECTORIO_DESTINO' para nombrar las partes de la malla."
+    echo "Es necesario para identificar inlet y outlets."
+    exit 1
+fi
+
 if command -v salome &>/dev/null; then
     CMD_SALOME="salome"
 else
@@ -51,20 +58,19 @@ BioSurfaceHoleFilling "$ARCH_VTK2"
 # Conversión optimizada de VTK a STL sin ParaView (Librería VTK nativa)
 python3 -c "
 import vtk
-reader = vtk.vtkUnstructuredGridReader()
+
+reader = vtk.vtkPolyDataReader()
 reader.SetFileName('$ARCH_VTK2')
 reader.Update()
-filter_geom = vtk.vtkGeometryFilter()
-filter_geom.SetInputData(reader.GetOutput())
-filter_geom.Update()
+
 writer = vtk.vtkSTLWriter()
 writer.SetFileName('${ARCH_VTK2%.vtk}.stl')
-writer.SetInputData(filter_geom.GetOutput())
+writer.SetInputData(reader.GetOutput())
 writer.Write()
 "
 
 # Procesamiento unificado en SALOME (Remallado, Clasificación y Exportación UNV)
-salome -t -b "$DIR_SCRIPT/optimiz.py"
+"$CMD_SALOME" -t -b "$DIR_SCRIPT/optimiz.py"
 
 # Conversión a parches de OpenFOAM
 DIR_FOAM="${DIRECTORIO_DESTINO}/foam"
@@ -72,6 +78,7 @@ ARCH_UNV=$(find "$DIR_FOAM" -maxdepth 1 -type f -name "*.unv" | head -n 1)
 
 cd "$DIR_FOAM"
 ideasUnvToFoam "$(basename "$ARCH_UNV")"
-touch "case.foam"
+
+touch "$(basename "$ARCH_UNV" .unv).foam"
 
 echo "=== Procesamiento de malla finalizado exitosamente ==="
