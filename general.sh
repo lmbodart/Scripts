@@ -70,7 +70,7 @@ writer.Write()
 "
 
 # Procesamiento unificado en SALOME (Remallado, Clasificación y Exportación UNV)
-"$CMD_SALOME" -t -b "$DIR_SCRIPT/optimiz.py"
+"$CMD_SALOME" -t -b "$DIR_SCRIPT/allsalome.py"
 
 # Conversión a parches de OpenFOAM
 DIR_FOAM="${DIRECTORIO_DESTINO}/foam"
@@ -81,4 +81,34 @@ ideasUnvToFoam "$(basename "$ARCH_UNV")"
 
 touch "$(basename "$ARCH_UNV" .unv).foam"
 
-echo "=== Procesamiento de malla finalizado exitosamente ==="
+echo "Procesamiento de malla en SALOME finalizado exitosamente."
+
+rm -f Allclean Allrun Allrun.pre
+
+echo "Exportando patches como archivo STL a triSurface..."
+pvpython "$DIR_SCRIPT/patch_stl.py"
+
+# Entrar a la carpeta de superficies
+cd "constant/triSurface"
+
+# Extraer SOLO el nombre del archivo sin rutas ni extensión .unv
+NAMEBASE=$(basename "$ARCH_UNV" .unv)
+ARCH_CONCAT="${NAMEBASE//mesh/surface}.stl"  
+for f in *0.stl; do
+    [ -f "$f" ] && mv "$f" "${f%0.stl}.stl"
+done
+
+# Reescribir los encabezados internamente en cada parche STL individual
+echo "Editando encabezados de archivos .stl..."
+for file in *.stl; do
+    [ -f "$file" ] || continue
+    name="${file%.stl}"
+    sed -i "s/Visualization Toolkit generated SLA File/$name/g" "$file"
+    sed -i "s/endsolid/endsolid $name/g" "$file"
+done
+
+# Concatenar todos los parches STL en el archivo final unificado
+echo "Concatenando parches en $ARCH_CONCAT..."
+cat [^C]*.stl > "$ARCH_CONCAT" 2>/dev/null || cat *.stl > "$ARCH_CONCAT"
+
+echo "Archivo concatenado generado en: constant/triSurface/$ARCH_CONCAT"

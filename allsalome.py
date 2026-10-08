@@ -3,7 +3,7 @@ import sys
 import math
 from pathlib import Path
 
-# 1. VERIFICACIÓN DE ENTORNO Y ARCHIVOS
+# VERIFICACIÓN DE ENTORNO Y ARCHIVOS
 dir_act = Path.cwd()
 arch_stl = next(dir_act.glob("*.stl"), None)
 dir_foam = dir_act / "foam"
@@ -67,7 +67,7 @@ except ImportError:
 
 print(f"Procesando geometría: {arch_stl.name}")
 
-# 2. IMPORTACIÓN DE MALLA STL
+# IMPORTACIÓN DE MALLA STL
 
 m_princ = smesh.CreateMeshesFromSTL(str(arch_stl))
 
@@ -155,7 +155,7 @@ for grp in raw_groups:
     centroid_z_sum = 0.0
 
     for elem_id in elem_ids:
-        norm = mesh_2.GetFaceNormal(elem_id, True)   # normal unitaria
+        norm = mesh_2.GetFaceNormal(elem_id, True)
         nodes = mesh_2.GetElemNodes(elem_id)
         pts = [mesh_2.GetNodeXYZ(n) for n in nodes]
         v1 = [pts[1][i] - pts[0][i] for i in range(3)]
@@ -201,14 +201,12 @@ elif len(wall_groups) == 1:
     wall.SetName("wall")
 else:
     wall = None
-    print("   [!] No se encontró ningún grupo de pared.")
+    print("No se encontró ningún grupo de pared.")
 
 if wall is not None:
-    print(f"   [+] Parche 'wall' asignado ({len(wall_groups)} grupos unidos)")
+    print(f"Parche 'wall' asignado ({len(wall_groups)} grupos unidos)")
 
-# Ordenamiento de tapas a lo largo del eje Z
 # ASIGNACIÓN DE NOMBRES POR PROXIMIDAD A LA CENTERLINE
-
 # Centroide xyz de cada tapa (promedio de baricentros de sus caras)
 for c in cap_groups:
     bc = np.array([mesh_2.BaryCenter(i) for i in c['group'].GetIDs()])
@@ -217,7 +215,7 @@ for c in cap_groups:
 targets = [("inlet", cl_inlet)] + [(f"outlet_{i}", p) for i, p in enumerate(cl_outlets, start=1)]
 
 if len(cap_groups) != len(targets):
-    print(f"   [!] Tapas detectadas ({len(cap_groups)}) != puntos en la centerline ({len(targets)}). "
+    print(f"Tapas detectadas ({len(cap_groups)}) != puntos en la centerline ({len(targets)}). "
           f"Revisa el umbral de planaridad o la centerline.")
 
 # Asignación óptima (mínima distancia total) probando todas las combinaciones; n es pequeño
@@ -238,14 +236,14 @@ for c_idx, t_idx in mejor:
     r_eq = math.sqrt(cap['area'] / math.pi)          # radio equivalente de la tapa
     cap['group'].SetName(name)
     asignadas.add(c_idx)
-    aviso = "  [!] distancia grande: ¿unidades o sistema de coordenadas distintos?" if dist > r_eq else ""
-    print(f"   [+] Parche '{name}' asignado (dist. a centerline: {dist:.3f}, "
+    aviso = "Distancia grande: ¿unidades o sistema de coordenadas distintos?" if dist > r_eq else ""
+    print(f"Parche '{name}' asignado (dist. a centerline: {dist:.3f}, "
           f"Área: {cap['area']:.2f}, P: {cap['planarity']:.4f}){aviso}")
 
 # Tapas sin pareja: se nombran de forma visible en vez de dejarlas anónimas
 for i, cap in enumerate(c for j, c in enumerate(cap_groups) if j not in asignadas):
     cap['group'].SetName(f"sin_asignar_{i+1}")
-    print(f"   [!] Tapa sin pareja en la centerline -> 'sin_asignar_{i+1}'")
+    print(f"Tapa sin pareja en la centerline -> 'sin_asignar_{i+1}'")
 
 # EXPORTAR EN FORMATO .UNV
 arch_out = arch_stl2.stem.replace("closed_r", "mesh") + ".unv"
