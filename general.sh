@@ -3,10 +3,12 @@ set -e
 
 DIR_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 DIRECTORIO_DESTINO="$PWD"
+DIR_GEO="$DIRECTORIO_DESTINO/0_geo_models"
+DIR_MESH="$DIRECTORIO_DESTINO/1_meshing"
 
-ARCH_CL=$(find "$DIRECTORIO_DESTINO" -maxdepth 1 -type f -name "*centerlines*.vtk" | head -n 1)
+ARCH_CL=$(find "$DIR_GEO" -maxdepth 1 -type f -name "*centerlines*.vtk" | head -n 1)
 if [ -z "$ARCH_CL" ]; then
-    echo "Error: no se encontró un archivo *centerlines*.vtk en '$DIRECTORIO_DESTINO' para nombrar las partes de la malla."
+    echo "Error: no se encontró un archivo *centerlines*.vtk en '$DIR_GEO' para nombrar las partes de la malla."
     echo "Es necesario para identificar inlet y outlets."
     exit 1
 fi
@@ -45,17 +47,21 @@ if [ -z "$ORIGEN_ENCONTRADO" ]; then
 fi
 
 # Copia de tutorial de OpenFOAM
-python3 "$DIR_SCRIPT/newdfoam.py" --origen "$ORIGEN_ENCONTRADO" --destino "$DIRECTORIO_DESTINO"
+python3 "$DIR_SCRIPT/newdfoam.py" --origen "$ORIGEN_ENCONTRADO" --destino "$DIR_MESH"
 
-# Implementación de herramientas de BioSurface para remallado y cierre de la malla base
-ARCH_VTK1=$(find "$DIRECTORIO_DESTINO" -maxdepth 1 -type f -name "*output*.vtk" | head -n 1)
-ARCH_VTK2="${ARCH_VTK1//output/closed}"
+# Sellado y remallado del VTK
+ARCH_VTK1=$(find "$DIR_GEO" -maxdepth 1 -type f -name "*model*.vtk" | head -n 1)
+
+NAME_VTK1=$(basename "$ARCH_VTK1")
+NAME_VTK2="${NAME_VTK1//model/closed}"
+ARCH_VTK2="$DIR_MESH/$NAME_VTK2"
+
 PARAM_BSIR=0.2
 
 BioSurfaceIsotropicRemeshing "$ARCH_VTK1" "$ARCH_VTK2" -length "$PARAM_BSIR"
 BioSurfaceHoleFilling "$ARCH_VTK2"
 
-# Conversión optimizada de VTK a STL sin ParaView (Librería VTK nativa)
+# Conversión optimizada de VTK a STL
 python3 -c "
 import vtk
 
@@ -70,10 +76,10 @@ writer.Write()
 "
 
 # Procesamiento unificado en SALOME (Remallado, Clasificación y Exportación UNV)
-"$CMD_SALOME" -t -b "$DIR_SCRIPT/allsalome.py"
+"$CMD_SALOME" -t -b "$DIR_SCRIPT/allsalome2.py"
 
 # Conversión a parches de OpenFOAM
-DIR_FOAM="${DIRECTORIO_DESTINO}/foam"
+DIR_FOAM="${DIR_MESH}/foam"
 ARCH_UNV=$(find "$DIR_FOAM" -maxdepth 1 -type f -name "*.unv" | head -n 1)
 
 cd "$DIR_FOAM"
@@ -112,3 +118,7 @@ echo "Concatenando parches en $ARCH_CONCAT..."
 cat [^C]*.stl > "$ARCH_CONCAT" 2>/dev/null || cat *.stl > "$ARCH_CONCAT"
 
 echo "Archivo concatenado generado en: constant/triSurface/$ARCH_CONCAT"
+
+# Editar snnapyHexMeshDict
+echo "Editando snappyHexMeshDict..."
+python3 "$DIR_SCRIPT/update_snappy.py" --caso "$DIR_FOAM"

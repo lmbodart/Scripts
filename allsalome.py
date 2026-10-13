@@ -19,17 +19,17 @@ def leer_centerline(ruta):
     r.Update()
     pd = r.GetOutput()
 
-    lineas = pd.GetLines()
-    lineas.InitTraversal()
+    lines = pd.GetLines()
+    lines.InitTraversal()
     ids = vtk.vtkIdList()
-    inicios, finales = [], []
-    while lineas.GetNextCell(ids):
-        inicios.append(pd.GetPoint(ids.GetId(0)))
-        finales.append(pd.GetPoint(ids.GetId(ids.GetNumberOfIds() - 1)))
+    starts, ends = [], []
+    while lines.GetNextCell(ids):
+        starts.append(pd.GetPoint(ids.GetId(0)))
+        ends.append(pd.GetPoint(ids.GetId(ids.GetNumberOfIds() - 1)))
 
-    inlet = np.mean(inicios, axis=0)          # punto de partida común
+    inlet = np.mean(starts, axis=0)
     outlets = []
-    for p in map(np.array, finales):          # extremo final de cada línea
+    for p in map(np.array, ends):
         if not any(np.linalg.norm(p - q) < 1e-6 for q in outlets):
             outlets.append(p)
     return inlet, outlets
