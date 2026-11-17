@@ -122,3 +122,8 @@ echo "Archivo concatenado generado en: constant/triSurface/$ARCH_CONCAT"
 # Editar snnapyHexMeshDict
 echo "Editando snappyHexMeshDict..."
 python3 "$DIR_SCRIPT/update_snappy.py" --caso "$DIR_FOAM"
+
+cd "$DIR_FOAM"
+snappyHexMesh -overwrite
+
+checkMesh
