@@ -87,6 +87,15 @@ ideasUnvToFoam "$(basename "$ARCH_UNV")"
 
 touch "$(basename "$ARCH_UNV" .unv).foam"
 
+# Calidad SICN de la malla tetraédrica (ANTES de snappyHexMesh, que sobreescribe polyMesh)
+DIR_CALIDAD="$DIR_MESH/calidad"
+mkdir -p "$DIR_CALIDAD"
+NOMBRE_FOAM="$(basename "$ARCH_UNV" .unv)"
+echo "Midiendo SICN de la malla de tetraedros..."
+pvpython "$DIR_SCRIPT/sicn_foam.py" "$DIR_FOAM/$NOMBRE_FOAM.foam" \
+    --salida "$DIR_CALIDAD/${NOMBRE_FOAM}_tets" \
+    || echo "Aviso: no se pudo calcular el SICN de los tetraedros."
+
 echo "Procesamiento de malla en SALOME finalizado exitosamente."
 
 rm -f Allclean Allrun Allrun.pre
@@ -125,5 +134,11 @@ python3 "$DIR_SCRIPT/update_snappy.py" --caso "$DIR_FOAM"
 
 cd "$DIR_FOAM"
 snappyHexMesh -overwrite
+
+# Calidad SICN de la malla final (tets + prismas de capas límite)
+echo "Midiendo SICN de la malla final..."
+pvpython "$DIR_SCRIPT/sicn_foam.py" "$DIR_FOAM/$NOMBRE_FOAM.foam" \
+    --salida "$DIR_CALIDAD/${NOMBRE_FOAM}_final" \
+    || echo "Aviso: no se pudo calcular el SICN de la malla final."
 
 checkMesh
