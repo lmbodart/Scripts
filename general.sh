@@ -76,7 +76,7 @@ writer.Write()
 "
 
 # Procesamiento unificado en SALOME (Remallado, Clasificación y Exportación UNV)
-"$CMD_SALOME" -t -b "$DIR_SCRIPT/allsalome2.py"
+"$CMD_SALOME" -t -b "$DIR_SCRIPT/allsalome.py"
 
 # Conversión a parches de OpenFOAM
 DIR_FOAM="${DIR_MESH}/foam"
