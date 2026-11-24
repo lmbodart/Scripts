@@ -2,9 +2,9 @@
 set -e
 
 DIR_SCRIPT="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
-DIRECTORIO_DESTINO="$PWD"
-DIR_GEO="$DIRECTORIO_DESTINO/0_geo_models"
-DIR_MESH="$DIRECTORIO_DESTINO/1_meshing"
+DIR_DEST="$PWD"
+DIR_GEO="$DIR_DEST/0_geo_models"
+DIR_MESH="$DIR_DEST/1_meshing"
 
 ARCH_CL=$(find "$DIR_GEO" -maxdepth 1 -type f -name "*centerlines*.vtk" | head -n 1)
 if [ -z "$ARCH_CL" ]; then
@@ -49,16 +49,20 @@ fi
 # Copia de tutorial de OpenFOAM
 python3 "$DIR_SCRIPT/newdfoam.py" --origen "$ORIGEN_ENCONTRADO" --destino "$DIR_MESH"
 
-# Sellado y remallado del VTK
 ARCH_VTK1=$(find "$DIR_GEO" -maxdepth 1 -type f -name "*model*.vtk" | head -n 1)
-
 NAME_VTK1=$(basename "$ARCH_VTK1")
 NAME_VTK2="${NAME_VTK1//model/closed}"
 ARCH_VTK2="$DIR_MESH/$NAME_VTK2"
-
 PARAM_BSIR=0.2
 
-BioSurfaceIsotropicRemeshing "$ARCH_VTK1" "$ARCH_VTK2" -length "$PARAM_BSIR"
+# Recorte de extremos
+ARCH_VTK_REC="$DIR_MESH/${NAME_VTK1/model/clipped}"
+python3 "$DIR_SCRIPT/clip_vtk.py" "$ARCH_VTK1" "$ARCH_CL" "$ARCH_VTK_REC" --factor 0.0
+
+# Remallado
+BioSurfaceIsotropicRemeshing "$ARCH_VTK_REC" "$ARCH_VTK2" -length "$PARAM_BSIR"
+
+# Sellado de tapas
 BioSurfaceHoleFilling "$ARCH_VTK2"
 
 # Conversión optimizada de VTK a STL
@@ -75,7 +79,7 @@ writer.SetInputData(reader.GetOutput())
 writer.Write()
 "
 
-# Procesamiento unificado en SALOME (Remallado, Clasificación y Exportación UNV)
+# Procesamiento unificado en SALOME (2D y 3D)
 "$CMD_SALOME" -t -b "$DIR_SCRIPT/allsalome.py"
 
 # Conversión a parches de OpenFOAM
@@ -87,14 +91,13 @@ ideasUnvToFoam "$(basename "$ARCH_UNV")"
 
 touch "$(basename "$ARCH_UNV" .unv).foam"
 
-# Calidad SICN de la malla tetraédrica (ANTES de snappyHexMesh, que sobreescribe polyMesh)
+# Calidad SICN de la malla tetraédrica
 DIR_CALIDAD="$DIR_MESH/calidad"
 mkdir -p "$DIR_CALIDAD"
 NOMBRE_FOAM="$(basename "$ARCH_UNV" .unv)"
 echo "Midiendo SICN de la malla de tetraedros..."
 pvpython "$DIR_SCRIPT/sicn_foam.py" "$DIR_FOAM/$NOMBRE_FOAM.foam" \
     --salida "$DIR_CALIDAD/${NOMBRE_FOAM}_tets" \
-    || echo "Aviso: no se pudo calcular el SICN de los tetraedros."
 
 echo "Procesamiento de malla en SALOME finalizado exitosamente."
 
@@ -103,17 +106,15 @@ rm -f Allclean Allrun Allrun.pre
 echo "Exportando patches como archivo STL a triSurface..."
 pvpython "$DIR_SCRIPT/patch_stl.py"
 
-# Entrar a la carpeta de superficies
 cd "constant/triSurface"
 
-# Extraer SOLO el nombre del archivo sin rutas ni extensión .unv
 NAMEBASE=$(basename "$ARCH_UNV" .unv)
 ARCH_CONCAT="${NAMEBASE//mesh/surface}.stl"  
 for f in *0.stl; do
     [ -f "$f" ] && mv "$f" "${f%0.stl}.stl"
 done
 
-# Reescribir los encabezados internamente en cada parche STL individual
+# Reescribir los encabezados en cada parche STL
 echo "Editando encabezados de archivos .stl..."
 for file in *.stl; do
     [ -f "$file" ] || continue
@@ -122,7 +123,7 @@ for file in *.stl; do
     sed -i "s/endsolid/endsolid $name/g" "$file"
 done
 
-# Concatenar todos los parches STL en el archivo final unificado
+# Concatenar todos los parches STL
 echo "Concatenando parches en $ARCH_CONCAT..."
 cat [^C]*.stl > "$ARCH_CONCAT" 2>/dev/null || cat *.stl > "$ARCH_CONCAT"
 
@@ -135,10 +136,9 @@ python3 "$DIR_SCRIPT/update_snappy.py" --caso "$DIR_FOAM"
 cd "$DIR_FOAM"
 snappyHexMesh -overwrite
 
-# Calidad SICN de la malla final (tets + prismas de capas límite)
+# Calidad SICN de la malla final
 echo "Midiendo SICN de la malla final..."
 pvpython "$DIR_SCRIPT/sicn_foam.py" "$DIR_FOAM/$NOMBRE_FOAM.foam" \
     --salida "$DIR_CALIDAD/${NOMBRE_FOAM}_final" \
-    || echo "Aviso: no se pudo calcular el SICN de la malla final."
 
 checkMesh
